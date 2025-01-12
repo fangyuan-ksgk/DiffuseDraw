@@ -1,5 +1,8 @@
 import xml.etree.ElementTree as ET
-import re, os, glob
+import re, os, glob, io
+from PIL import Image
+from cairosvg import svg2png
+from tqdm import tqdm 
 
 def isKanji(v):
 	return (v >= 0x4E00 and v <= 0x9FC3) or (v >= 0x3400 and v <= 0x4DBF) or (v >= 0xF900 and v <= 0xFAD9) or (v >= 0x2E80 and v <= 0x2EFF) or (v >= 0x20000 and v <= 0x2A6DF)
@@ -77,20 +80,50 @@ def parse_kanjidic2(xml_path):
     
     return kanji_dict
 
-def get_kanji_graphs(kanji_svg_folder: str = "kanji", kanji_graph_folder: str = "kanji_paths"):
+def convert_svg_to_image(svg_path: str, out_dir: str = "data/kanji_image"):
+    out_dir = "data/kanji_image"
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Read SVG and convert to PNG in memory
+    png_data = svg2png(url=svg_path, output_width=128, output_height=128)
+
+    # Convert PNG bytes to PIL Image
+    image = Image.open(io.BytesIO(png_data))
+    
+    # Create a white background image
+    white_bg = Image.new('RGBA', image.size, 'WHITE')
+    
+    # Paste the kanji image onto the white background
+    white_bg.paste(image, (0, 0), image)
+    
+    image_path = os.path.join(out_dir, f"{os.path.basename(svg_path).replace('-paths.svg', '-128.png')}")
+    white_bg.save(image_path)
+    return image_path
+
+def get_kanji_graphs(kanji_svg_folder: str = "data/kanji", kanji_graph_folder: str = "data/kanji_paths"):
     kanji_files = [p for p in glob.glob(f"{kanji_svg_folder}/*.svg") if not "-" in p]
     kanji_codes = [p.split("/")[-1].split(".")[0] for p in kanji_files]
 
     kanji_graphs = {}
-    for file, code in zip(kanji_files, kanji_codes):
+    for file, code in tqdm(zip(kanji_files, kanji_codes), total=len(kanji_files), desc="Processing kanji graphs"):
         if not is_valid_kanji_code(code):
             continue
-        kanji_graphs[code_to_kanji(code)] = createPathsSVG(file, kanji_graph_folder)
+        svg_path = createPathsSVG(file, kanji_graph_folder)
+        image_path = convert_svg_to_image(svg_path, kanji_graph_folder)
+        os.remove(svg_path)
+        kanji_graphs[code_to_kanji(code)] = image_path
+        
     return kanji_graphs
 
+import json 
 
 # combine kanji_dict and kanji_meanings
-def prepare_kanji_dict(kanji_svg_folder: str = "data/kanji", kanji_graph_folder: str = "data/kanji_paths", kanjidic2_path: str = "data/kanjidic2.xml"):
+def prepare_kanji_dict(kanji_svg_folder: str = "data/kanji", kanji_graph_folder: str = "data/kanji_paths", kanjidic2_path: str = "data/kanjidic2.xml",
+                       out_dir: str = "data", regenerate: bool = False):
+    
+    if os.path.exists(os.path.join(out_dir, "kanji_dict.json")) and not regenerate:
+        return json.load(open(os.path.join(out_dir, "kanji_dict.json"), "r", encoding="utf-8"))
+    
     kanji_graphs = get_kanji_graphs(kanji_svg_folder, kanji_graph_folder)
     kanji_meanings = parse_kanjidic2(kanjidic2_path)
     
@@ -100,4 +133,8 @@ def prepare_kanji_dict(kanji_svg_folder: str = "data/kanji", kanji_graph_folder:
             kanji_dict[kanji] = {"path": path, "meanings": kanji_meanings[kanji]}
         else:
             kanji_dict[kanji] = {"path": path, "meanings": ""}
+
+    with open(os.path.join(out_dir, "kanji_dict.json"), "w", encoding="utf-8") as f:
+        json.dump(kanji_dict, f, ensure_ascii=False, indent=4)
+        
     return kanji_dict
