@@ -3,6 +3,14 @@ import re, os, glob, io
 from PIL import Image
 from cairosvg import svg2png
 from tqdm import tqdm 
+import matplotlib.pyplot as plt
+from matplotlib import font_manager
+import random 
+from datasets import Dataset, DatasetDict
+from dataclasses import dataclass
+from torchvision import transforms
+import torch
+
 
 def isKanji(v):
 	return (v >= 0x4E00 and v <= 0x9FC3) or (v >= 0x3400 and v <= 0x4DBF) or (v >= 0xF900 and v <= 0xFAD9) or (v >= 0x2E80 and v <= 0x2EFF) or (v >= 0x20000 and v <= 0x2A6DF)
@@ -138,3 +146,143 @@ def prepare_kanji_dict(kanji_svg_folder: str = "data/kanji", kanji_graph_folder:
         json.dump(kanji_dict, f, ensure_ascii=False, indent=4)
         
     return kanji_dict
+
+
+def vis_kanji_data(kanji_dict, n_rows=2, n_cols=4):
+    # Add a Japanese font
+    plt.rcParams['font.family'] = ['Hiragino Sans GB', 'Arial Unicode MS', 'sans-serif']
+
+    # Create a figure with 2 rows and 6 columns
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 8))
+    axes = axes.flatten()
+
+    # Get 12 kanji characters
+    kanji_samples = list(kanji_dict.keys())[:n_rows * n_cols]
+    random.shuffle(kanji_samples) # shuffle the order
+
+    # Plot each kanji and its meanings
+    for idx, kanji in enumerate(kanji_samples):
+        image_path = kanji_dict[kanji]['path']
+        meanings = kanji_dict[kanji]['meanings'].split(';')[:2]  # Take only first 2 meanings
+        
+        # Load and display image
+        img = Image.open(image_path)
+        axes[idx].imshow(img)
+        axes[idx].axis('off')
+        
+        # Add kanji and meanings below the image
+        meanings_text = '\n'.join(m.strip() for m in meanings)  # Strip whitespace and join with newline
+        # Update text rendering with font properties
+        axes[idx].text(0.5, -0.3, meanings_text, 
+                    horizontalalignment='center', 
+                    transform=axes[idx].transAxes,
+                    fontsize=20)
+
+    plt.tight_layout(h_pad=2)  # Increase vertical padding between subplots
+    plt.show()
+    
+    
+def _create_kanji_dataset(kanji_dict, train_ratio=0.833):  # 5:1 ratio is approximately 0.833:0.167
+    dataset_dict = {
+        "image": [],
+        "text": [],
+        "kanji": [],
+        "image_path": []
+    }
+    
+    # First collect all valid entries
+    for kanji, data in kanji_dict.items():
+        try:
+            image = Image.open(data['path'])
+            dataset_dict["image"].append(image)
+            dataset_dict["text"].append(data['meanings'])
+            dataset_dict["kanji"].append(kanji)
+            dataset_dict["image_path"].append(data['path'])
+        except Exception as e:
+            print(f"Error processing kanji {kanji}: {e}")
+            continue
+    
+    # Create train-test split
+    total_size = len(dataset_dict["image"])
+    train_size = int(total_size * train_ratio)
+    
+    # Create indices and shuffle them
+    indices = list(range(total_size))
+    random.shuffle(indices)
+    
+    # Split indices
+    train_indices = indices[:train_size]
+    test_indices = indices[train_size:]
+    
+    # Create train and test dictionaries
+    train_dict = {k: [v[i] for i in train_indices] for k, v in dataset_dict.items()}
+    test_dict = {k: [v[i] for i in test_indices] for k, v in dataset_dict.items()}
+    
+    # Create dataset dictionary with train and test splits
+    return DatasetDict({
+        'train': Dataset.from_dict(train_dict),
+        'test': Dataset.from_dict(test_dict)
+    })
+    
+    
+def create_kanji_dataset(train_ratio: float = 0.833):
+    kanji_dict = prepare_kanji_dict()
+    dataset = _create_kanji_dataset(kanji_dict, train_ratio)
+    return dataset
+
+
+# Training Config 
+
+@dataclass
+class TrainingConfig:
+    image_size: int
+    train_batch_size: int
+    eval_batch_size: int
+    num_epochs: int
+    gradient_accumulation_steps: int
+    learning_rate: float
+    lr_warmup_steps: int
+    save_image_epochs: int
+    save_model_epochs: int
+    mixed_precision: str
+    output_dir: str
+    push_to_hub: bool
+    hub_model_id: str
+    hub_private_repo: bool
+    overwrite_output_dir: bool
+    seed: int
+
+    @classmethod
+    def from_json(cls, config_path: str):
+        config_dict = json.load(open(config_path, "r", encoding="utf-8"))
+        return cls(**config_dict)
+
+
+def get_transform(config, tokenizer, text_encoder):
+    def transform(examples):
+        # Image transforms
+        preprocess = transforms.Compose([
+            transforms.Resize((config.image_size, config.image_size)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.5], [0.5]),
+        ])
+        images = [preprocess(image.convert("RGB")) for image in examples["image"]]
+        
+        # Text transforms using CLIP tokenizer
+        text_inputs = tokenizer(
+            examples["text"],
+            padding="max_length",
+            max_length=tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt"
+        )
+        
+        # Get CLIP embeddings
+        with torch.no_grad():
+            text_embeddings = text_encoder(text_inputs.input_ids)[0]
+        
+        return {
+            "images": images,
+            "text_embeddings": text_embeddings
+        }
+    return transform
