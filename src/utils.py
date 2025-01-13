@@ -147,7 +147,39 @@ def prepare_kanji_dict(kanji_svg_folder: str = "data/kanji", kanji_graph_folder:
         
     return kanji_dict
 
+def evaluate_kanji_pipeline(pipeline, dataset, n_rows=2, n_cols=4, seed=33, out_dir: str = "runs", out_name: str = "kanji_eval.png"): 
+    random.seed(seed)
+    prompts = [random.choice(s.split(";")) for s in random.choices(dataset['test']['text'], k=n_rows*n_cols)]
+    images = pipeline(prompts, num_inference_steps=25).images
+    
+    # Add a Japanese font
+    plt.rcParams['font.family'] = ['Hiragino Sans GB', 'Arial Unicode MS', 'sans-serif']
 
+    # Create a figure with n_rows and n_cols
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 8))
+    axes = axes.flatten()
+    
+    for idx, img in enumerate(images):
+        caption = prompts[idx]
+        axes[idx].imshow(img)
+        axes[idx].axis('off')
+        axes[idx].text(0.5, -0.3, caption, 
+                    horizontalalignment='center', 
+                    transform=axes[idx].transAxes,
+                    fontsize=20)
+    
+    plt.tight_layout(h_pad=2)  # Increase vertical padding between subplots
+    
+    # Ensure output directory exists
+    os.makedirs(out_dir, exist_ok=True)
+    
+    # Save figure before showing it
+    plt.savefig(os.path.join(out_dir, out_name))
+    plt.close()
+
+    return images
+    
+    
 def vis_kanji_data(kanji_dict, n_rows=2, n_cols=4):
     # Add a Japanese font
     plt.rcParams['font.family'] = ['Hiragino Sans GB', 'Arial Unicode MS', 'sans-serif']
@@ -182,7 +214,7 @@ def vis_kanji_data(kanji_dict, n_rows=2, n_cols=4):
     plt.show()
     
     
-def _create_kanji_dataset(kanji_dict, train_ratio=0.833):  # 5:1 ratio is approximately 0.833:0.167
+def _create_kanji_dataset(kanji_dict, train_ratio=0.833, list_caption: bool = False):  # 5:1 ratio is approximately 0.833:0.167
     dataset_dict = {
         "image": [],
         "text": [],
@@ -195,7 +227,10 @@ def _create_kanji_dataset(kanji_dict, train_ratio=0.833):  # 5:1 ratio is approx
         try:
             image = Image.open(data['path'])
             dataset_dict["image"].append(image)
-            dataset_dict["text"].append(data['meanings'])
+            if list_caption: 
+                dataset_dict["text"].append(data['meanings'].split(";"))
+            else: 
+                dataset_dict["text"].append(data['meanings'])
             dataset_dict["kanji"].append(kanji)
             dataset_dict["image_path"].append(data['path'])
         except Exception as e:
@@ -225,9 +260,11 @@ def _create_kanji_dataset(kanji_dict, train_ratio=0.833):  # 5:1 ratio is approx
     })
     
     
-def create_kanji_dataset(train_ratio: float = 0.833):
+def create_kanji_dataset(train_ratio: float = 0.833, list_caption: bool = True, push_to_hub: bool = False, hub_model_id: str = "Ksgk-fy/kanji-dataset"):
     kanji_dict = prepare_kanji_dict()
-    dataset = _create_kanji_dataset(kanji_dict, train_ratio)
+    dataset = _create_kanji_dataset(kanji_dict, train_ratio, list_caption)
+    if push_to_hub:
+        dataset.push_to_hub(hub_model_id)
     return dataset
 
 
