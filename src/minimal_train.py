@@ -3,6 +3,8 @@ import math
 import os
 from pathlib import Path
 from tqdm import tqdm
+import csv
+from datetime import datetime
 
 import torch
 import torch.nn.functional as F
@@ -95,6 +97,17 @@ def parse_args():
 
 def main():
     args = parse_args()
+    
+    # Create unique run directory
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = Path(args.output_dir) / timestamp
+    run_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Initialize lists to store metrics
+    training_stats = {
+        'epoch': [],
+        'avg_loss': [],
+    }
     
     # Initialize accelerator - removed tensorboard logging
     accelerator = Accelerator(
@@ -246,22 +259,41 @@ def main():
         accelerator.print(f"Epoch {epoch}: Average loss = {avg_loss:.4f}")
         progress_bar.close()
 
+        # Save training stats
+        training_stats['epoch'].append(epoch)
+        training_stats['avg_loss'].append(avg_loss)
+        
+        # Save metrics to CSV
+        metrics_file = run_dir / 'training_metrics.csv'
+        with open(metrics_file, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=['epoch', 'avg_loss'])
+            writer.writeheader()
+            for i in range(len(training_stats['epoch'])):
+                writer.writerow({
+                    'epoch': training_stats['epoch'][i],
+                    'avg_loss': training_stats['avg_loss'][i]
+                })
+
         # Save checkpoint
         if epoch % 10 == 0:
+            # Save model checkpoint
+            # checkpoint_dir = run_dir / f"checkpoint-epoch-{epoch}"
             pipeline = StableDiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 unet=accelerator.unwrap_model(unet),
                 text_encoder=text_encoder,
                 vae=vae,
             )
-            # here we want to inference on a few characters and store them locally 
+            # pipeline.save_pretrained(checkpoint_dir)
+            
+            # Generate and save evaluation images
             evaluate_kanji_pipeline(
                 pipeline, 
                 dataset, 
                 n_rows=2, 
                 n_cols=4, 
                 seed=33, 
-                out_dir="runs", 
+                out_dir=str(run_dir), 
                 out_name=f"kanji_eval_{epoch}.png"
             )
             
