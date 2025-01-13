@@ -149,12 +149,15 @@ def prepare_kanji_dict(kanji_svg_folder: str = "data/kanji", kanji_graph_folder:
 
 def evaluate_kanji_pipeline(pipeline, dataset, n_rows=2, n_cols=4, seed=33, out_dir: str = "runs", out_name: str = "kanji_eval.png"): 
     random.seed(seed)
-    prompts = [random.choice(s.split(";")) for s in random.choices(dataset['test']['text'], k=n_rows*n_cols)]
+    prompts = []
+    kanji_list = random.sample(list(dataset['test']['text']), n_rows*n_cols)
+    for s in kanji_list:
+        if isinstance(s, str):
+            s = s.split(";") 
+        prompts.append(random.choice(s))
+    
     images = pipeline(prompts, num_inference_steps=25).images
     
-    # Add a Japanese font
-    plt.rcParams['font.family'] = ['Hiragino Sans GB', 'Arial Unicode MS', 'sans-serif']
-
     # Create a figure with n_rows and n_cols
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 8))
     axes = axes.flatten()
@@ -205,7 +208,7 @@ def vis_kanji_data(kanji_dict, n_rows=2, n_cols=4):
         # Add kanji and meanings below the image
         meanings_text = '\n'.join(m.strip() for m in meanings)  # Strip whitespace and join with newline
         # Update text rendering with font properties
-        axes[idx].text(0.5, -0.3, meanings_text, 
+        axes[idx].text(0.5, -0.15, meanings_text, 
                     horizontalalignment='center', 
                     transform=axes[idx].transAxes,
                     fontsize=20)
