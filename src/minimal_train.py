@@ -265,7 +265,7 @@ def main():
                 out_name=f"kanji_eval_{epoch}.png"
             )
             
-        pipeline.push_to_hub(args.model_id + f"_{epoch}")
+    pipeline.push_to_hub(args.model_id + f"_{epoch}")
 
 if __name__ == "__main__":
     main() 
