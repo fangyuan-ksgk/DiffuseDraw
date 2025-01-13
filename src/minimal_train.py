@@ -18,7 +18,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
-from .utils import evaluate_kanji_pipeline
+from utils import evaluate_kanji_pipeline
 
 
 def parse_args():
