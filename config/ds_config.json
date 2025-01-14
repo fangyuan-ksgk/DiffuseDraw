@@ -1,5 +1,6 @@
 {
     "distributed_type": "DEEPSPEED",
+    "num_processes": 1,
     "deepspeed_config": {
         "train_batch_size": "auto",
         "gradient_accumulation_steps": "auto",
