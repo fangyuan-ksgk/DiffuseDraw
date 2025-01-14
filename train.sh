@@ -20,7 +20,7 @@
 #     --gray_scale=True
 
 # DS Accelerated Training
-accelerate launch --config_file ds_config.json src/minimal_train.py \
+accelerate launch --config_file "config/ds_config.json" src/minimal_train.py \
     --pretrained_model_name_or_path="Ksgk-fy/stable-diffusion-v1-5-smaller-unet-random" \
     --dataset_name="Ksgk-fy/kanji-dataset" \
     --output_dir="./runs/kanji-simple-unet" \
