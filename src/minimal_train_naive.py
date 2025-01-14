@@ -261,11 +261,6 @@ def main():
                 # Predict the noise residual
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
                 
-                # RGB --> Gray scale projection | luminosity method
-                if args.gray_scale:
-                    weights = LUMINOSITY_WEIGHTS.view(1, 3, 1, 1).to(model_pred.device)
-                    model_pred = (model_pred * weights).sum(dim=1, keepdim=True)
-
                 # Calculate loss
                 loss = F.mse_loss(model_pred.float(), noise.float(), reduction="mean")
                 total_loss += loss.detach().item()

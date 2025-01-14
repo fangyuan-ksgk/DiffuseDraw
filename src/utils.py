@@ -150,6 +150,10 @@ def prepare_kanji_dict(kanji_svg_folder: str = "data/kanji", kanji_graph_folder:
     return kanji_dict
 
 def evaluate_kanji_pipeline(pipeline, dataset, n_rows=2, n_cols=4, seed=33, out_dir: str = "runs", out_name: str = "kanji_eval.png", gray_scale: bool = False): 
+    # Move pipeline to GPU if available
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    pipeline = pipeline.to(device)
+    
     random.seed(seed)
     prompts = []
     kanji_list = random.sample(list(dataset['test']['text']), n_rows*n_cols)
@@ -158,7 +162,9 @@ def evaluate_kanji_pipeline(pipeline, dataset, n_rows=2, n_cols=4, seed=33, out_
             s = s.split(";") 
         prompts.append(random.choice(s))
     
-    images = pipeline(prompts, num_inference_steps=25).images
+    # Generate images
+    with torch.autocast(device):
+        images = pipeline(prompts, num_inference_steps=25).images
     
     if gray_scale:
         images = [rgb_to_gray(img) for img in images]
