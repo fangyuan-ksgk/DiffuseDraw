@@ -10,6 +10,8 @@ from datasets import Dataset, DatasetDict
 from dataclasses import dataclass
 from torchvision import transforms
 import torch
+from PIL import Image 
+import numpy as np 
 
 
 def isKanji(v):
@@ -147,7 +149,7 @@ def prepare_kanji_dict(kanji_svg_folder: str = "data/kanji", kanji_graph_folder:
         
     return kanji_dict
 
-def evaluate_kanji_pipeline(pipeline, dataset, n_rows=2, n_cols=4, seed=33, out_dir: str = "runs", out_name: str = "kanji_eval.png"): 
+def evaluate_kanji_pipeline(pipeline, dataset, n_rows=2, n_cols=4, seed=33, out_dir: str = "runs", out_name: str = "kanji_eval.png", gray_scale: bool = False): 
     random.seed(seed)
     prompts = []
     kanji_list = random.sample(list(dataset['test']['text']), n_rows*n_cols)
@@ -157,6 +159,9 @@ def evaluate_kanji_pipeline(pipeline, dataset, n_rows=2, n_cols=4, seed=33, out_
         prompts.append(random.choice(s))
     
     images = pipeline(prompts, num_inference_steps=25).images
+    
+    if gray_scale:
+        images = [rgb_to_gray(img) for img in images]
     
     # Create a figure with n_rows and n_cols
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 8))
@@ -326,3 +331,24 @@ def get_transform(config, tokenizer, text_encoder):
             "text_embeddings": text_embeddings
         }
     return transform
+
+LUMINOSITY_WEIGHTS = torch.tensor([0.299, 0.587, 0.114])
+
+
+def rgb_to_gray(image: Image.Image) -> Image.Image:
+    """Convert RGB PIL Image to grayscale using luminosity weights.
+    
+    Args:
+        image (PIL.Image): Input RGB image
+        
+    Returns:
+        PIL.Image: Grayscale image
+    """
+    # Convert PIL Image to numpy array
+    img_array = np.array(image)
+    
+    # Apply luminosity weights and sum across color channels
+    gray_array = np.dot(img_array, LUMINOSITY_WEIGHTS)
+    
+    # Convert back to PIL Image
+    return Image.fromarray(np.uint8(gray_array))

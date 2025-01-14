@@ -8,7 +8,7 @@ from datetime import datetime
 
 import torch
 import torch.nn.functional as F
-from accelerate import Accelerator, DeepSpeedPlugin
+from accelerate import Accelerator
 from datasets import load_dataset
 from torchvision import transforms
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -20,7 +20,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
-from utils import evaluate_kanji_pipeline
+from utils import evaluate_kanji_pipeline, LUMINOSITY_WEIGHTS
 
 
 def parse_args():
@@ -59,7 +59,7 @@ def parse_args():
     parser.add_argument(
         "--resolution",
         type=int,
-        default=512,
+        default=128,
         help="The resolution for input images",
     )
     parser.add_argument(
@@ -85,7 +85,10 @@ def parse_args():
         help='The scheduler type to use. Choose between ["linear", "cosine", "constant"]',
     )
     parser.add_argument(
-        "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+        "--lr_warmup_steps", type=int, default=200, help="Number of steps for the warmup in the lr scheduler."
+    )
+    parser.add_argument(
+        "--gray_scale", type=bool, default=False, help="Whether to use gray scale projection."
     )
     args = parser.parse_args()
 
@@ -109,10 +112,10 @@ def main():
         'avg_loss': [],
     }
     
-    # Update Accelerator initialization - remove explicit DeepSpeed configuration
+    # Initialize accelerator - removed tensorboard logging
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
-        mixed_precision="fp16",
+        mixed_precision="fp16",  # Use fp16 for faster training
     )
 
     # Log the device being used
@@ -239,6 +242,11 @@ def main():
 
                 # Predict the noise residual
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                
+                # RGB --> Gray scale projection | luminosity method
+                if args.gray_scale:
+                    weights = LUMINOSITY_WEIGHTS.view(1, 3, 1, 1).to(model_pred.device)
+                    model_pred = (model_pred * weights).sum(dim=1, keepdim=True)
 
                 # Calculate loss
                 loss = F.mse_loss(model_pred.float(), noise.float(), reduction="mean")
@@ -294,7 +302,8 @@ def main():
                 n_cols=4, 
                 seed=33, 
                 out_dir=str(run_dir), 
-                out_name=f"kanji_eval_{epoch}.png"
+                out_name=f"kanji_eval_{epoch}.png",
+                gray_scale=args.gray_scale
             )
             
     pipeline.push_to_hub(args.model_id + f"_{epoch}")
