@@ -29,5 +29,4 @@ accelerate launch --config_file "config/ds_config.json" src/minimal_train.py \
     --gradient_accumulation_steps=2 \
     --lr_scheduler="cosine" \
     --lr_warmup_steps=100 \
-    --num_train_epochs=200 \
-    --gray_scale=False
+    --num_train_epochs=200
