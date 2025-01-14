@@ -8,7 +8,7 @@
         "zero_optimization": {
             "stage": 1
         },
-        "bf16": {
+        "fp16": {
             "enabled": true
         }
     }

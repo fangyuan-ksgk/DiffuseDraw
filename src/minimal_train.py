@@ -246,7 +246,7 @@ def main():
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
-                latents = vae.encode(batch["pixel_values"].to(dtype=torch.float32)).latent_dist.sample()
+                latents = vae.encode(batch["pixel_values"]).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
 
                 # Sample noise
@@ -260,10 +260,6 @@ def main():
 
                 # Get the text embedding for conditioning
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
-
-                # Ensure consistent dtype for model input
-                noisy_latents = noisy_latents.to(dtype=torch.float32)
-                encoder_hidden_states = encoder_hidden_states.to(dtype=torch.float32)
 
                 # Predict the noise residual
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
