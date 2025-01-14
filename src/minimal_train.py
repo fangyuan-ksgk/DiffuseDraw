@@ -88,8 +88,17 @@ def parse_args():
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
     )
     parser.add_argument(
-        "--gray_scale", type=bool, default=False, help="Whether to use gray scale projection."
+        "--gray_scale",
+        action='store_true',
+        help="Whether to use gray scale projection."
     )
+    parser.add_argument(
+        "--no_gray_scale",
+        action='store_false',
+        dest='gray_scale',
+        help="Whether to use RGB (non-gray scale) projection."
+    )
+    parser.set_defaults(gray_scale=False)
     args = parser.parse_args()
 
     if args.dataset_name is None and args.train_data_dir is None:
