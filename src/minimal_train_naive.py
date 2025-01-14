@@ -166,14 +166,15 @@ def main():
     # Preprocessing
     def preprocess_train(examples):
         if args.gray_scale:
-            # Create grayscale-specific transforms
+            # Create grayscale-specific transforms but repeat to 3 channels
             train_transforms = transforms.Compose([
                 transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
                 transforms.CenterCrop(args.resolution),
+                transforms.Grayscale(num_output_channels=3),  # Convert to grayscale but keep 3 channels
                 transforms.ToTensor(),
-                transforms.Normalize([0.5], [0.5]),  # Single channel normalization for grayscale
+                transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),  # Three channel normalization
             ])
-            images = [image.convert("L") for image in examples["image"]]
+            images = [image.convert("RGB") for image in examples["image"]]  # Convert to RGB first
         else:
             # Use original RGB transforms
             train_transforms = transforms.Compose([
