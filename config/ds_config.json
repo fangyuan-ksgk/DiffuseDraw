@@ -1,12 +1,14 @@
 {
-    "distributed_type": "NO",
-    "train_batch_size": "auto",
-    "gradient_accumulation_steps": "auto",
-    "gradient_clipping": 1.0,
-    "zero_optimization": {
-        "stage": 1
-    },
-    "fp16": {
-        "enabled": true
+    "distributed_type": "DEEPSPEED",
+    "deepspeed_config": {
+        "train_batch_size": "auto",
+        "gradient_accumulation_steps": "auto",
+        "gradient_clipping": 1.0,
+        "zero_optimization": {
+            "stage": 1
+        },
+        "fp16": {
+            "enabled": true
+        }
     }
 }
