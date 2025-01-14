@@ -100,6 +100,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    print(f"Gray scale mode: {args.gray_scale}")
     
     # Create unique run directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
