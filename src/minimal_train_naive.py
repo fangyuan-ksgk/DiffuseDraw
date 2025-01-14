@@ -156,17 +156,26 @@ def main():
         dataset = load_dataset("imagefolder", data_files={"train": os.path.join(args.train_data_dir, "**")})
 
     # Preprocessing
-    train_transforms = transforms.Compose(
-        [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(args.resolution),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ]
-    )
-
     def preprocess_train(examples):
-        images = [image.convert("RGB") for image in examples["image"]]
+        if args.gray_scale:
+            # Create grayscale-specific transforms
+            train_transforms = transforms.Compose([
+                transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.CenterCrop(args.resolution),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5]),  # Single channel normalization for grayscale
+            ])
+            images = [image.convert("L") for image in examples["image"]]
+        else:
+            # Use original RGB transforms
+            train_transforms = transforms.Compose([
+                transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.CenterCrop(args.resolution),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),  # Three channel normalization for RGB
+            ])
+            images = [image.convert("RGB") for image in examples["image"]]
+        
         examples["pixel_values"] = [train_transforms(image) for image in images]
         
         # Ensure text input is properly formatted
