@@ -164,7 +164,7 @@ def evaluate_kanji_pipeline(pipeline, dataset, n_rows=2, n_cols=4, seed=33, out_
     
     # Generate images
     with torch.autocast(device):
-        images = pipeline(prompts, num_inference_steps=25).images
+        images = pipeline(prompts, num_inference_steps=50).images
     
     if gray_scale:
         images = [rgb_to_gray(img) for img in images]
