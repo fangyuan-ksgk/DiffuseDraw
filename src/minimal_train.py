@@ -20,7 +20,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
-from utils import evaluate_kanji_pipeline, LUMINOSITY_WEIGHTS
+from utils import evaluate_kanji_pipeline, LUMINOSITY_WEIGHTS, save_loss_curve
 
 
 def parse_args():
@@ -307,6 +307,7 @@ def main():
             )
             
     pipeline.push_to_hub(args.model_id + f"_{epoch}")
+    save_loss_curve(metrics_file)
 
 if __name__ == "__main__":
     main() 

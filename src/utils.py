@@ -12,7 +12,7 @@ from torchvision import transforms
 import torch
 from PIL import Image 
 import numpy as np 
-
+import pandas as pd 
 
 def isKanji(v):
 	return (v >= 0x4E00 and v <= 0x9FC3) or (v >= 0x3400 and v <= 0x4DBF) or (v >= 0xF900 and v <= 0xFAD9) or (v >= 0x2E80 and v <= 0x2EFF) or (v >= 0x20000 and v <= 0x2A6DF)
@@ -352,3 +352,14 @@ def rgb_to_gray(image: Image.Image) -> Image.Image:
     
     # Convert back to PIL Image
     return Image.fromarray(np.uint8(gray_array))
+
+
+
+def save_loss_curve(metrics_file: str):
+    df = pd.read_csv(metrics_file)
+    plt.plot(df['epoch'], df['avg_loss'])
+    plt.xlabel('Epoch')
+    plt.ylabel('Average Loss')
+    plt.title('Training Loss Curve')
+    plt.savefig(metrics_file.replace("metrics.csv", "loss_curve.png"))
+    plt.close()
