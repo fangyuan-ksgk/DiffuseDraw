@@ -17,7 +17,7 @@
 #     --lr_scheduler="cosine" \
 #     --lr_warmup_steps=100 \
 #     --num_train_epochs=100 \
-#     --gray_scale=True
+#     --gray_scale
 
 # DS Accelerated Training
 accelerate launch --config_file "config/ds_config.json" src/minimal_train.py \
