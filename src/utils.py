@@ -149,7 +149,7 @@ def prepare_kanji_dict(kanji_svg_folder: str = "data/kanji", kanji_graph_folder:
         
     return kanji_dict
 
-def evaluate_kanji_pipeline(pipeline, dataset, n_rows=2, n_cols=4, seed=33, out_dir: str = "runs", out_name: str = "kanji_eval.png", gray_scale: bool = False): 
+def evaluate_kanji_pipeline(pipeline, dataset, n_rows=2, n_cols=4, seed=33, out_dir: str = "runs", out_name: str = "kanji_eval.png"): 
     # Move pipeline to GPU if available
     device = "cuda" if torch.cuda.is_available() else "cpu"
     pipeline = pipeline.to(device)
@@ -165,9 +165,6 @@ def evaluate_kanji_pipeline(pipeline, dataset, n_rows=2, n_cols=4, seed=33, out_
     # Generate images
     with torch.autocast(device):
         images = pipeline(prompts, num_inference_steps=50).images
-    
-    if gray_scale:
-        images = [rgb_to_gray(img) for img in images]
     
     # Create a figure with n_rows and n_cols
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 8))
@@ -371,3 +368,47 @@ def save_loss_curve(metrics_file: str):
     output_path = str(metrics_file).replace("metrics.csv", "loss_curve.png")
     plt.savefig(output_path)
     plt.close()
+    
+    
+def expand_dataset(examples):
+    new_examples = {
+        "image": [],
+        "text": []
+    }
+    
+    # Process each example in the batch
+    for idx in range(len(examples["image"])):
+        image = examples["image"][idx]
+        text_variants = examples["text"][idx]
+        
+        # Ensure text_variants is a list
+        if not isinstance(text_variants, list):
+            text_variants = [text_variants]
+            
+        # Create a new example for each text variant
+        for text in text_variants:
+            new_examples["image"].append(image)
+            new_examples["text"].append(str(text))
+    
+    return new_examples
+
+
+def visualize_tensor(pixel_values, is_grayscale=True):
+    # Clone tensor to avoid modifying the original
+    image = pixel_values.clone()
+    
+    # Move to CPU if needed
+    if image.device != 'cpu':
+        image = image.cpu()
+        
+    # Denormalize from [-1,1] back to [0,1]
+    image = (image * 0.5 + 0.5).clamp(0, 1)
+    
+    # Remove batch dimension if present
+    if len(image.shape) == 4:
+        image = image[0]
+    
+    # Convert to PIL Image
+    image = transforms.ToPILImage()(image)
+
+    return image

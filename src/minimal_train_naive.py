@@ -118,6 +118,9 @@ def main():
     training_stats = {
         'epoch': [],
         'avg_loss': [],
+        'val_loss': [],  # Add validation loss tracking
+        'best_val_loss': float('inf'),
+        'patience_counter': 0,
     }
     
     # Initialize accelerator - removed tensorboard logging
@@ -157,7 +160,10 @@ def main():
         weight_decay=1e-2,
     )
 
-    # Load dataset
+    # Add gradient clipping
+    clip_grad_norm = 1.0
+
+    # Load dataset | More test-to-image pairs (sample more from caption list) | More noisy images
     if args.dataset_name is not None:
         dataset = load_dataset(args.dataset_name)
     else:
@@ -165,25 +171,15 @@ def main():
 
     # Preprocessing
     def preprocess_train(examples):
-        if args.gray_scale:
-            # Create grayscale-specific transforms but repeat to 3 channels
-            train_transforms = transforms.Compose([
-                transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(args.resolution),
-                transforms.Grayscale(num_output_channels=3),  # Convert to grayscale but keep 3 channels
-                transforms.ToTensor(),
-                transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),  # Three channel normalization
-            ])
-            images = [image.convert("RGB") for image in examples["image"]]  # Convert to RGB first
-        else:
-            # Use original RGB transforms
-            train_transforms = transforms.Compose([
-                transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(args.resolution),
-                transforms.ToTensor(),
-                transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),  # Three channel normalization for RGB
-            ])
-            images = [image.convert("RGB") for image in examples["image"]]
+        
+        # Use original RGB transforms
+        train_transforms = transforms.Compose([
+            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.CenterCrop(args.resolution),
+            transforms.ToTensor(),
+            transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),  # Three channel normalization for RGB
+        ])
+        images = [image.convert("RGB") for image in examples["image"]]
         
         examples["pixel_values"] = [train_transforms(image) for image in images]
         
@@ -201,9 +197,11 @@ def main():
             max_length=tokenizer.model_max_length,
             return_tensors="pt",
         ).input_ids
+        
         return examples
 
     train_dataset = dataset["train"].with_transform(preprocess_train)
+    val_dataset = dataset['test'].with_transform(preprocess_train)
 
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
@@ -215,6 +213,12 @@ def main():
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         shuffle=True,
+        collate_fn=collate_fn,
+        batch_size=args.train_batch_size,
+    )
+    val_dataloader = torch.utils.data.DataLoader(
+        val_dataset,
+        shuffle=False,
         collate_fn=collate_fn,
         batch_size=args.train_batch_size,
     )
@@ -234,6 +238,9 @@ def main():
         num_training_steps=max_train_steps,
     )
 
+    # Add validation loop after each epoch
+    patience = 5  # Number of epochs to wait before early stopping
+    
     # Training loop
     for epoch in range(args.num_train_epochs):
         unet.train()
@@ -267,6 +274,11 @@ def main():
                 
                 # Backpropagate
                 accelerator.backward(loss)
+                
+                # Add gradient clipping before optimizer step
+                if accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(unet.parameters(), clip_grad_norm)
+                
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -295,7 +307,49 @@ def main():
                     'avg_loss': training_stats['avg_loss'][i]
                 })
 
-        # Save checkpoint
+            
+        # Add validation loop after each epoch
+        unet.eval()
+        val_loss = 0
+        with torch.no_grad():
+            for batch in val_dataloader: 
+                # Convert images to latent space
+                latents = vae.encode(batch["pixel_values"]).latent_dist.sample()
+                latents = latents * vae.config.scaling_factor
+
+                # Sample noise
+                noise = torch.randn_like(latents)
+                bsz = latents.shape[0]
+                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                timesteps = timesteps.long()
+
+                # Add noise to the latents
+                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+
+                # Get the text embedding for conditioning
+                encoder_hidden_states = text_encoder(batch["input_ids"])[0]
+
+                # Predict the noise residual
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                
+                # Calculate loss
+                loss = F.mse_loss(model_pred.float(), noise.float(), reduction="mean")
+                val_loss += loss.detach().item()
+        
+        val_loss /= len(val_dataloader)
+        training_stats['val_loss'].append(val_loss)
+        
+        # Early stopping check
+        if val_loss < training_stats['best_val_loss']:
+            training_stats['best_val_loss'] = val_loss
+            training_stats['patience_counter'] = 0
+        else:
+            training_stats['patience_counter'] += 1
+            if training_stats['patience_counter'] >= patience:
+                print(f"Early stopping triggered at epoch {epoch}")
+                break
+    
+        # Save Intermediate Model Output
         if epoch % 10 == 0:
             # Save model checkpoint
             # checkpoint_dir = run_dir / f"checkpoint-epoch-{epoch}"
@@ -305,7 +359,6 @@ def main():
                 text_encoder=text_encoder,
                 vae=vae,
             )
-            # pipeline.save_pretrained(checkpoint_dir)
             
             # Generate and save evaluation images
             evaluate_kanji_pipeline(
@@ -315,10 +368,9 @@ def main():
                 n_cols=4, 
                 seed=33, 
                 out_dir=str(run_dir), 
-                out_name=f"kanji_eval_{epoch}.png",
-                gray_scale=args.gray_scale
+                out_name=f"kanji_eval_{epoch}.png"
             )
-            
+        
     pipeline.push_to_hub(args.model_id + f"_{epoch}")
     save_loss_curve(metrics_file)
     
