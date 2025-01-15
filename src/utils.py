@@ -367,5 +367,7 @@ def save_loss_curve(metrics_file: str):
     plt.xlabel('Epoch')
     plt.ylabel('Average Loss')
     plt.title('Training Loss Curve')
-    plt.savefig(metrics_file.replace("metrics.csv", "loss_curve.png"))
+    # Convert Path to string before using replace
+    output_path = str(metrics_file).replace("metrics.csv", "loss_curve.png")
+    plt.savefig(output_path)
     plt.close()
