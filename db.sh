@@ -5,8 +5,8 @@ autotrain dreambooth \
 --image-path data/kanji_image/ \
 --prompt "Kanji character" \
 --resolution 128 \
---batch-size 64 \
---num-steps 500 \
+--batch-size 16 \
+--num-steps 100 \
 --gradient-accumulation 1 \
 --lr 1e-5 \
 --xformers \
