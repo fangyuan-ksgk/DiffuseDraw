@@ -1,8 +1,8 @@
 # Naive Diffusion UNet training 
 python src/minimal_train_naive.py \
     --pretrained_model_name_or_path="Ksgk-fy/stable-diffusion-v1-5-smaller-unet-random" \
-    --dataset_name="Ksgk-fy/expanded-kanji-dataset" \
-    --output_dir="./runs/kanji-simple-unet-expand" \
+    --dataset_name="Ksgk-fy/augmented-kanji-dataset" \
+    --output_dir="./runs/kanji-simple-unet-augment" \
     --resolution=128 \
     --train_batch_size=256 \
     --gradient_accumulation_steps=2 \
@@ -14,8 +14,8 @@ python src/minimal_train_naive.py \
 # SD pre-trained 
 python src/minimal_train_naive.py \
     --pretrained_model_name_or_path="stable-diffusion-v1-5/stable-diffusion-v1-5" \
-    --dataset_name="Ksgk-fy/expanded-kanji-dataset" \
-    --output_dir="./runs/kanji-sd-base-expand" \
+    --dataset_name="Ksgk-fy/augmented-kanji-dataset" \
+    --output_dir="./runs/kanji-sd-base-augment" \
     --resolution=128 \
     --train_batch_size=256 \
     --gradient_accumulation_steps=2 \

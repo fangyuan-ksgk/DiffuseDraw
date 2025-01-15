@@ -378,7 +378,8 @@ def expand_dataset(examples):
     
     # Process each example in the batch
     for idx in range(len(examples["image"])):
-        image = examples["image"][idx]
+        image = examples["image"][idx] # convert to tensor? 
+        img_tensor = transforms.ToTensor()(image)
         text_variants = examples["text"][idx]
         
         # Ensure text_variants is a list
@@ -387,11 +388,79 @@ def expand_dataset(examples):
             
         # Create a new example for each text variant
         for text in text_variants:
-            new_examples["image"].append(image)
+            new_examples["image"].append(img_tensor)
             new_examples["text"].append(str(text))
     
     return new_examples
 
+
+def augment_dataset(examples):
+    new_examples = {
+        "image": [],
+        "text": []
+    }
+    
+    # Define augmentation transforms with different parameters
+    augmentations = [
+        # Original image (no augmentation)
+        transforms.Compose([
+            transforms.Lambda(lambda x: x)
+        ]),
+        # Random rotations with different angles
+        transforms.Compose([
+            transforms.RandomRotation(degrees=(-5, 5))
+        ]),
+        transforms.Compose([
+            transforms.RandomRotation(degrees=(-10, 10))
+        ]),
+        # Random perspective with different distortion scales
+        transforms.Compose([
+            transforms.RandomPerspective(distortion_scale=0.15, p=1.0)
+        ]),
+        transforms.Compose([
+            transforms.RandomPerspective(distortion_scale=0.25, p=1.0)
+        ]),
+        # Elastic distortions with different parameters
+        transforms.Compose([
+            transforms.ElasticTransform(alpha=40.0, sigma=4.0)
+        ]),
+        transforms.Compose([
+            transforms.ElasticTransform(alpha=60.0, sigma=6.0)
+        ]),
+        # Additional perspective transformations (replacing brightness/contrast)
+        transforms.Compose([
+            transforms.RandomPerspective(distortion_scale=0.18, p=1.0)
+        ]),
+        transforms.Compose([
+            transforms.RandomPerspective(distortion_scale=0.22, p=1.0)
+        ]),
+        # Combined transformations
+        transforms.Compose([
+            transforms.RandomRotation(degrees=(-3, 3)),
+            transforms.RandomPerspective(distortion_scale=0.1, p=1.0)
+        ])
+    ]
+    
+    image = examples["image"]
+    text = examples["text"]
+    
+    # Ensure text is a list
+    if not isinstance(text, list):
+        text = [text]
+        
+    # Apply each augmentation for each text variant
+    for text_variant in text:
+        for aug in augmentations:
+            try:
+                # Apply augmentation
+                aug_image = aug(image)
+                new_examples["image"].append(aug_image)
+                new_examples["text"].append(str(text_variant))
+            except Exception as e:
+                print(f"Augmentation failed: {e}")
+                continue
+    
+    return new_examples
 
 def visualize_tensor(pixel_values, is_grayscale=True):
     # Clone tensor to avoid modifying the original
