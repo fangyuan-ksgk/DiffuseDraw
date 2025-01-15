@@ -224,7 +224,9 @@ def main():
     )
 
     # Prepare everything with accelerator
-    unet, optimizer, train_dataloader = accelerator.prepare(unet, optimizer, train_dataloader)
+    unet, optimizer, train_dataloader, val_dataloader = accelerator.prepare(
+        unet, optimizer, train_dataloader, val_dataloader
+    )
 
     # Calculate number of training steps
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
