@@ -4,7 +4,7 @@ python src/minimal_train_naive.py \
     --dataset_name="Ksgk-fy/expanded-kanji-dataset" \
     --output_dir="./runs/kanji-simple-unet-expand" \
     --resolution=128 \
-    --train_batch_size=48 \
+    --train_batch_size=256 \
     --gradient_accumulation_steps=2 \
     --lr_scheduler="cosine" \
     --lr_warmup_steps=300 \
@@ -17,7 +17,7 @@ python src/minimal_train_naive.py \
     --dataset_name="Ksgk-fy/expanded-kanji-dataset" \
     --output_dir="./runs/kanji-sd-base-expand" \
     --resolution=128 \
-    --train_batch_size=48 \
+    --train_batch_size=256 \
     --gradient_accumulation_steps=2 \
     --lr_scheduler="cosine" \
     --lr_warmup_steps=300 \
