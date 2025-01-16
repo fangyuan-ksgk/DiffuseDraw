@@ -374,12 +374,12 @@ def main():
         # Save Intermediate Model Output
         if epoch % 10 == 0:
             # Save model checkpoint
-            # checkpoint_dir = run_dir / f"checkpoint-epoch-{epoch}"
-            pipeline = StableDiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path,
+            pipeline = StableDiffusionPipeline(
                 unet=accelerator.unwrap_model(unet),
-                text_encoder=text_encoder,
-                vae=vae,
+                text_encoder=accelerator.unwrap_model(text_encoder),
+                vae=accelerator.unwrap_model(vae),
+                tokenizer=tokenizer,  # tokenizer doesn't need unwrapping as it's not a torch module
+                scheduler=noise_scheduler,  # scheduler doesn't need unwrapping as it's not a torch module
             )
             
             # Generate and save evaluation images
