@@ -13,5 +13,5 @@ pip install backports.tarfile
 cd examples/dreambooth
 pip install -r requirements.txt
 
-accelerate config
-wandb login
+# accelerate config
+# wandb login
