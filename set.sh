@@ -4,6 +4,8 @@ pip install Pillow wandb matplotlib cairosvg ftfy tensorboard Jinja2 peft senten
 pip install --upgrade diffusers accelerate transformers xformers torchvision datasets deepspeed
 
 # Set Up for DreamBooth Training
+mkdir external
+mkdir checkpoint
 cd external
 git clone https://github.com/huggingface/diffusers.git
 cd diffusers
