@@ -5,6 +5,7 @@ from pathlib import Path
 from tqdm import tqdm
 import csv
 from datetime import datetime
+import wandb
 
 import torch
 import torch.nn.functional as F
@@ -53,7 +54,7 @@ def parse_args():
     parser.add_argument(
         "--model_id",
         type=str,
-        default="Ksgk-fy/stable-diffusion-v1-5-smaller-unet-kanji",
+        default="sd-model-finetuned",
         help="The model id for pushing to hub",
     )
     parser.add_argument(
@@ -108,6 +109,13 @@ def parse_args():
 
 def main():
     args = parse_args()
+    
+    # Initialize wandb right after parsing args
+    wandb.init(
+        project=args.model_id,
+        config=vars(args),
+        name=f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    )
     
     # Create unique run directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -309,7 +317,13 @@ def main():
                     'avg_loss': training_stats['avg_loss'][i]
                 })
 
-            
+        # Log training metrics
+        wandb.log({
+            "epoch": epoch,
+            "train_loss": avg_loss,
+            "learning_rate": lr_scheduler.get_last_lr()[0]
+        })
+
         # Add validation loop after each epoch
         unet.eval()
         val_loss = 0
@@ -350,7 +364,13 @@ def main():
             if training_stats['patience_counter'] >= patience:
                 print(f"Early stopping triggered at epoch {epoch}")
                 break
-    
+        
+        # After validation, log validation metrics
+        wandb.log({
+            "val_loss": val_loss,
+            "best_val_loss": training_stats['best_val_loss']
+        })
+        
         # Save Intermediate Model Output
         if epoch % 10 == 0:
             # Save model checkpoint
@@ -363,7 +383,7 @@ def main():
             )
             
             # Generate and save evaluation images
-            evaluate_kanji_pipeline(
+            images = evaluate_kanji_pipeline(
                 pipeline, 
                 dataset, 
                 n_rows=2, 
@@ -372,9 +392,19 @@ def main():
                 out_dir=str(run_dir), 
                 out_name=f"kanji_eval_{epoch}.png"
             )
+            
+            # Log the evaluation image to wandb using the generated images directly
+            wandb.log({
+                "kanji_samples": wandb.Image(images)
+            })
         
-    pipeline.push_to_hub(args.model_id + f"_{epoch}")
+    # pipeline.push_to_hub("Ksgk-fy/" + args.model_id + f"_{epoch}")
+    os.makedirs('checkpoint/kanji_finetune', exist_ok=True)
+    pipeline.save_pretrained('checkpoint/kanji_finetune', args.model_id + f"_{epoch}")
     save_loss_curve(metrics_file)
+    
+    # At the end of training
+    wandb.finish()
     
 if __name__ == "__main__":
     main() 
