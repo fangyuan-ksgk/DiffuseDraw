@@ -2,3 +2,9 @@ data/
 runs
 .runs
 runs/
+external
+external/
+.external
+.checkpoint
+checkpoint/
+checkpoint 
