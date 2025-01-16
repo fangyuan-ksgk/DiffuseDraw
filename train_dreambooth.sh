@@ -4,7 +4,7 @@ export OUTPUT_DIR="checkpoint/kanji_db"
 
 # Validation image stored in WandB 
 
-accelerate launch ../train_dreambooth.py \
+accelerate launch external/diffusers/examples/dreambooth/train_dreambooth.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
