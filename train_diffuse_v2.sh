@@ -21,4 +21,5 @@ accelerate launch --mixed_precision="fp16"  external/diffusers/examples/text_to_
   --validation_prompts "alien" "evolution" "shark" \
   --validation_epochs 5 \
   --use_ema \
-  --snr_gamma=5.0
+  --snr_gamma=5.0 \
+  --push_to_hub

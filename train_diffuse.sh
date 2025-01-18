@@ -1,5 +1,6 @@
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export DATASET_NAME="Ksgk-fy/kanji-dataset"
+# export DATASET_NAME="Ksgk-fy/kanji-dataset"
+export DATASET_NAME="Ksgk-fy/expanded-kanji-dataset"
 export OUTPUT_DIR="checkpoint/kanji_finetune_hf"
 
 accelerate launch --mixed_precision="fp16"  external/diffusers/examples/text_to_image/train_text_to_image.py \
@@ -18,3 +19,4 @@ accelerate launch --mixed_precision="fp16"  external/diffusers/examples/text_to_
   --report_to="wandb" \
   --validation_prompts "alien" "evolution" "shark" \
   --validation_epochs 5 \
+  --push_to_hub

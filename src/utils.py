@@ -369,28 +369,23 @@ def save_loss_curve(metrics_file: str):
     plt.savefig(output_path)
     plt.close()
     
-    
+
 def expand_dataset(examples):
     new_examples = {
         "image": [],
         "text": []
     }
     
-    # Process each example in the batch
-    for idx in range(len(examples["image"])):
-        image = examples["image"][idx] # convert to tensor? 
-        img_tensor = transforms.ToTensor()(image)
-        text_variants = examples["text"][idx]
-        
-        # Ensure text_variants is a list
-        if not isinstance(text_variants, list):
-            text_variants = [text_variants]
-            
-        # Create a new example for each text variant
-        for text in text_variants:
-            new_examples["image"].append(img_tensor)
-            new_examples["text"].append(str(text))
+    images = examples["image"]
+    texts = examples["text"]    
     
+    for image, text in zip(images, texts):
+        if not isinstance(text, list):
+            text = [text]
+        for text_variant in text:
+            new_examples["image"].append(image)
+            new_examples["text"].append(str(text_variant))
+                
     return new_examples
 
 # Define augmentation transforms with different parameters
