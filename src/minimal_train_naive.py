@@ -380,6 +380,8 @@ def main():
                 vae=accelerator.unwrap_model(vae),
                 tokenizer=tokenizer,  # tokenizer doesn't need unwrapping as it's not a torch module
                 scheduler=noise_scheduler,  # scheduler doesn't need unwrapping as it's not a torch module
+                safety_checker=None,
+                feature_extractor=None,
             )
             
             # Generate and save evaluation images
