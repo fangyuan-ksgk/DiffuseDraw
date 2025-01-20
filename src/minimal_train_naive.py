@@ -5,11 +5,14 @@ from pathlib import Path
 from tqdm import tqdm
 import csv
 from datetime import datetime
+from contextlib import nullcontext
+import numpy as np 
 import wandb
 
 import torch
 import torch.nn.functional as F
 from accelerate import Accelerator
+from accelerate.utils import ProjectConfiguration
 from datasets import load_dataset
 from torchvision import transforms
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -22,6 +25,154 @@ from diffusers import (
 )
 from diffusers.optimization import get_scheduler
 from utils import evaluate_kanji_pipeline, LUMINOSITY_WEIGHTS, save_loss_curve
+
+from diffusers.optimization import get_scheduler
+from diffusers.training_utils import compute_snr
+from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
+from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.torch_utils import is_compiled_module
+from diffusers import DiffusionPipeline
+
+
+if is_wandb_available():
+    import wandb
+
+# Will error if the minimal version of diffusers is not installed. Remove at your own risks.
+check_min_version("0.33.0.dev0")
+
+logger = get_logger(__name__)
+
+
+def save_model_card(
+    args,
+    repo_id: str,
+    images: list = None,
+    repo_folder: str = None,
+):
+    img_str = ""
+    if len(images) > 0:
+        image_grid = make_image_grid(images, 1, len(args.validation_prompts))
+        image_grid.save(os.path.join(repo_folder, "val_imgs_grid.png"))
+        img_str += "![val_imgs_grid](./val_imgs_grid.png)\n"
+
+    model_description = f"""
+# Text-to-image finetuning - {repo_id}
+
+This pipeline was finetuned from **{args.pretrained_model_name_or_path}** on the **{args.dataset_name}** dataset. Below are some example images generated with the finetuned pipeline using the following prompts: {args.validation_prompts}: \n
+{img_str}
+
+## Pipeline usage
+
+You can use the pipeline like so:
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+
+pipeline = DiffusionPipeline.from_pretrained("{repo_id}", torch_dtype=torch.float16)
+prompt = "{args.validation_prompts[0]}"
+image = pipeline(prompt).images[0]
+image.save("my_image.png")
+```
+
+## Training info
+
+These are the key hyperparameters used during training:
+
+* Epochs: {args.num_train_epochs}
+* Learning rate: {args.learning_rate}
+* Batch size: {args.train_batch_size}
+* Gradient accumulation steps: {args.gradient_accumulation_steps}
+* Image resolution: {args.resolution}
+* Mixed-precision: {args.mixed_precision}
+
+"""
+    wandb_info = ""
+    if is_wandb_available():
+        wandb_run_url = None
+        if wandb.run is not None:
+            wandb_run_url = wandb.run.url
+
+    if wandb_run_url is not None:
+        wandb_info = f"""
+More information on all the CLI arguments and the environment are available on your [`wandb` run page]({wandb_run_url}).
+"""
+
+    model_description += wandb_info
+
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="creativeml-openrail-m",
+        base_model=args.pretrained_model_name_or_path,
+        model_description=model_description,
+        inference=True,
+    )
+
+    tags = ["stable-diffusion", "stable-diffusion-diffusers", "text-to-image", "diffusers", "diffusers-training"]
+    model_card = populate_model_card(model_card, tags=tags)
+
+    model_card.save(os.path.join(repo_folder, "README.md"))
+    
+    
+def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight_dtype, epoch):
+    logger.info("Running validation... ")
+
+    pipeline = StableDiffusionPipeline.from_pretrained(
+        args.pretrained_model_name_or_path,
+        vae=accelerator.unwrap_model(vae),
+        text_encoder=accelerator.unwrap_model(text_encoder),
+        tokenizer=tokenizer,
+        unet=accelerator.unwrap_model(unet),
+        safety_checker=None,
+        revision=args.revision,
+        variant=args.variant,
+        torch_dtype=weight_dtype,
+    )
+    pipeline = pipeline.to(accelerator.device)
+    pipeline.set_progress_bar_config(disable=True)
+
+    if args.enable_xformers_memory_efficient_attention:
+        pipeline.enable_xformers_memory_efficient_attention()
+
+    if args.seed is None:
+        generator = None
+    else:
+        generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+
+    images = []
+    for i in range(len(args.validation_prompts)):
+        if torch.backends.mps.is_available():
+            autocast_ctx = nullcontext()
+        else:
+            autocast_ctx = torch.autocast(accelerator.device.type)
+
+        with autocast_ctx:
+            image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
+
+        images.append(image)
+
+    for tracker in accelerator.trackers:
+        if tracker.name == "tensorboard":
+            np_images = np.stack([np.asarray(img) for img in images])
+            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+        elif tracker.name == "wandb":
+            tracker.log(
+                {
+                    "validation": [
+                        wandb.Image(image, caption=f"{i}: {args.validation_prompts[i]}")
+                        for i, image in enumerate(images)
+                    ]
+                }
+            )
+        else:
+            logger.warning(f"image logging not implemented for {tracker.name}")
+
+    del pipeline
+    torch.cuda.empty_cache()
+
+    return images
 
 
 def parse_args():
@@ -89,15 +240,9 @@ def parse_args():
         "--lr_warmup_steps", type=int, default=200, help="Number of steps for the warmup in the lr scheduler."
     )
     parser.add_argument(
-        "--gray_scale",
-        action='store_true',
-        help="Whether to use gray scale projection."
-    )
-    parser.add_argument(
-        "--no_gray_scale",
-        action='store_false',
-        dest='gray_scale',
-        help="Whether to use RGB (non-gray scale) projection."
+        "--train_text_encoder",
+        action="store_true",
+        help="Whether to train the text encoder.",
     )
     args = parser.parse_args()
 
@@ -130,6 +275,31 @@ def main():
         'best_val_loss': float('inf'),
         'patience_counter': 0,
     }
+    
+    logging_dir = os.path.join(args.output_dir, args.logging_dir)
+    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
+
+    accelerator = Accelerator(
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        mixed_precision=args.mixed_precision,
+        log_with=args.report_to,
+        project_config=accelerator_project_config,
+    )
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
+
+    # Handle the repository creation
+    if accelerator.is_main_process:
+        if args.output_dir is not None:
+            os.makedirs(args.output_dir, exist_ok=True)
+
+        if args.push_to_hub:
+            repo_id = create_repo(
+                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
+            ).repo_id
+    
+    
     
     # Initialize accelerator - removed tensorboard logging
     accelerator = Accelerator(

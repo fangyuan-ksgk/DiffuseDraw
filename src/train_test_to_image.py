@@ -280,6 +280,11 @@ def parse_args():
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
+        "--train_text_encoder",
+        action="store_true",
+        help="Whether to train the text encoder.",
+    )
+    parser.add_argument(
         "--cache_dir",
         type=str,
         default=None,
@@ -619,7 +624,11 @@ def main():
 
     # Freeze vae and text_encoder and set unet to trainable
     vae.requires_grad_(False)
-    text_encoder.requires_grad_(False)
+    if not args.train_text_encoder:
+        text_encoder.requires_grad_(False)
+    else:
+        text_encoder.requires_grad_(True)
+        
     unet.train()
 
     # Create EMA for the unet.

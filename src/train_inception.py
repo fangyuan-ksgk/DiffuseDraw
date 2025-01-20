@@ -272,6 +272,11 @@ def parse_args(input_args=None):
         help="The prompt with identifier specifying the concept",
     )
     parser.add_argument(
+        "--mixed_inception_training",
+        action="store_true",
+        help="Whether to use mixed inception training to learn concept and instance together.",
+    )
+    parser.add_argument(
         "--class_prompt",
         type=str,
         default=None,
@@ -832,6 +837,20 @@ def encode_prompt(text_encoder, input_ids, attention_mask, text_encoder_use_atte
     return prompt_embeds
 
 
+def schedule_concept_learning(concept_learning_ratio, global_step, max_train_steps, mixed=False):
+    if mixed: 
+        random_value = random.random()
+        if random_value < concept_learning_ratio:
+            return True
+        else:
+            return False
+    else:
+        if global_step < max_train_steps * concept_learning_ratio:
+            return True
+        else:
+            return False
+
+
 def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
@@ -1254,10 +1273,7 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Decide whether to use concept or instance prompt based on ratio
-                use_concept = (
-                    random.random() < args.concept_learning_ratio 
-                    if args.dataset_name else True
-                )
+                use_concept = schedule_concept_learning(args.concept_learning_ratio, global_step, args.max_train_steps, args.mixed_inception_training)
                 
                 if use_concept:
                     input_ids = batch["concept_prompt_ids"]
