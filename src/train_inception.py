@@ -1121,7 +1121,6 @@ def main(args):
 
     # Dataset and DataLoaders creation:
     train_dataset = InceptionDataset(
-        concept_data_root=args.concept_data_dir,
         concept_prompt=args.concept_prompt,
         class_data_root=args.class_data_dir if args.with_prior_preservation else None,
         class_prompt=args.class_prompt,
