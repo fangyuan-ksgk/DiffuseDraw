@@ -1,18 +1,20 @@
 import xml.etree.ElementTree as ET
-import re, os, glob, io
+import re, os, glob, io, re, random
 from PIL import Image
 from cairosvg import svg2png
 from tqdm import tqdm 
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
-import random 
 from datasets import Dataset, DatasetDict
 from dataclasses import dataclass
 from torchvision import transforms
+from itertools import combinations
 import torch
-from PIL import Image 
 import numpy as np 
 import pandas as pd 
+from nltk.corpus import words, names
+import nltk
+
 
 def isKanji(v):
 	return (v >= 0x4E00 and v <= 0x9FC3) or (v >= 0x3400 and v <= 0x4DBF) or (v >= 0xF900 and v <= 0xFAD9) or (v >= 0x2E80 and v <= 0x2EFF) or (v >= 0x20000 and v <= 0x2A6DF)
@@ -225,61 +227,105 @@ def vis_kanji_data(kanji_dict, n_rows=2, n_cols=4):
     plt.show()
     
     
-def _create_kanji_dataset(kanji_dict, train_ratio=0.833, list_caption: bool = False):  # 5:1 ratio is approximately 0.833:0.167
-    dataset_dict = {
-        "image": [],
-        "text": [],
-        "kanji": [],
-        "image_path": []
-    }
+
+def setup_english_words():
+    try:
+        # Download required NLTK data if not already present
+        nltk.download('words', quiet=True)
+        nltk.download('names', quiet=True)
+    except:
+        pass
     
-    # First collect all valid entries
-    for kanji, data in kanji_dict.items():
-        try:
-            image = Image.open(data['path'])
+    # Create a set of English words and names for faster lookup
+    english_words = set(words.words())
+    english_names = set(names.words())
+    return english_words.union(english_names)
+
+def is_english(text):
+    """
+    Check if a given text is English using multiple heuristics.
+    
+    Args:
+        text (str): Input text to check
+        
+    Returns:
+        bool: True if the text is likely English, False otherwise
+    """
+    # Initialize English word set if not already done
+    if not hasattr(is_english, 'english_words'):
+        is_english.english_words = setup_english_words()
+    
+    # Clean and normalize the text
+    text = text.strip().lower()
+    
+    # Skip empty strings
+    if not text:
+        return False
+    
+    # Split into words and remove punctuation
+    words_in_text = re.findall(r'\b\w+\b', text)
+    
+    if not words_in_text:
+        return False
+    
+    # Count how many words are in our English dictionary
+    english_word_count = sum(1 for word in words_in_text 
+                           if word in is_english.english_words)
+    
+    # Calculate the ratio of English words
+    english_ratio = english_word_count / len(words_in_text)
+    
+    # Common non-English characters (including accents and special characters)
+    non_english_pattern = r'[àáâãäçèéêëìíîïñòóôõöùúûüýÿ]'
+    has_non_english_chars = bool(re.search(non_english_pattern, text))
+    
+    # Return True if:
+    # 1. No non-English characters are present AND
+    # 2. At least 60% of words are recognized English words
+    return (not has_non_english_chars) and (english_ratio >= 0.6)
+    
+
+def get_all_combinations(list_of_captions):
+    text_list = []
+    for i in range(1, len(list_of_captions) + 1):
+        for combo in combinations(list_of_captions, i):
+            text_list.append(", ".join(combo))
+    return text_list
+
+    
+def _create_inception_dataset(kanji_dict):
+    dataset_dict = {"text": [], "image": []}
+
+    for kanji, data in tqdm(kanji_dict.items(), total=len(kanji_dict), desc="Processing Kanji Dataset"):
+        image = Image.open(data['path'])
+        list_of_captions = data['meanings'].split("; ")
+
+        en_captions = [caption for caption in list_of_captions if is_english(caption)] # filter out non-english captions
+
+        all_combinations = get_all_combinations(en_captions) # exhaust all combinations (variable # of element)
+
+        special_token = "Kanji"
+        CAPTION_TEMPLATE = "a {special_token} meaning {caption}"
+        transform_text = lambda caption: CAPTION_TEMPLATE.format(special_token=special_token, caption=caption)
+
+        for text in all_combinations:
+            dataset_dict["text"].append(transform_text(text))
             dataset_dict["image"].append(image)
-            if list_caption: 
-                dataset_dict["text"].append(data['meanings'].split(";"))
-            else: 
-                dataset_dict["text"].append(data['meanings'])
-            dataset_dict["kanji"].append(kanji)
-            dataset_dict["image_path"].append(data['path'])
-        except Exception as e:
-            print(f"Error processing kanji {kanji}: {e}")
-            continue
+                    
+    dataset = DatasetDict({'train': Dataset.from_dict(dataset_dict)})
+    return dataset
     
-    # Create train-test split
-    total_size = len(dataset_dict["image"])
-    train_size = int(total_size * train_ratio)
-    
-    # Create indices and shuffle them
-    indices = list(range(total_size))
-    random.shuffle(indices)
-    
-    # Split indices
-    train_indices = indices[:train_size]
-    test_indices = indices[train_size:]
-    
-    # Create train and test dictionaries
-    train_dict = {k: [v[i] for i in train_indices] for k, v in dataset_dict.items()}
-    test_dict = {k: [v[i] for i in test_indices] for k, v in dataset_dict.items()}
-    
-    # Create dataset dictionary with train and test splits
-    return DatasetDict({
-        'train': Dataset.from_dict(train_dict),
-        'test': Dataset.from_dict(test_dict)
-    })
-    
-    
-def create_kanji_dataset(train_ratio: float = 0.833, list_caption: bool = True, push_to_hub: bool = False, hub_model_id: str = "Ksgk-fy/kanji-dataset"):
+
+
+def create_inception_dataset(push_to_hub: bool = False, hub_model_id: str = "Ksgk-fy/inception-kanji-dataset"):
     kanji_dict = prepare_kanji_dict()
-    dataset = _create_kanji_dataset(kanji_dict, train_ratio, list_caption)
+    dataset = _create_inception_dataset(kanji_dict)
     if push_to_hub:
         dataset.push_to_hub(hub_model_id)
     return dataset
 
 
-# Training Config 
+
 
 @dataclass
 class TrainingConfig:

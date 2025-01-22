@@ -12,6 +12,7 @@ cd diffusers
 pip install -e .
 pip install wandb
 pip install backports.tarfile
+pip install nltk
 cd examples/dreambooth
 pip install -r requirements.txt
 
