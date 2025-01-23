@@ -1,7 +1,7 @@
 import xml.etree.ElementTree as ET
 import re, os, glob, io, re, random
 from PIL import Image
-from cairosvg import svg2png
+# from cairosvg import svg2png
 from tqdm import tqdm 
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
@@ -97,7 +97,12 @@ def convert_svg_to_image(svg_path: str, out_dir: str = "data/kanji_image"):
     os.makedirs(out_dir, exist_ok=True)
 
     # Read SVG and convert to PNG in memory
-    png_data = svg2png(url=svg_path, output_width=128, output_height=128)
+    try:
+        from cairosvg import svg2png
+        png_data = svg2png(url=svg_path, output_width=128, output_height=128)
+    except:
+        print("Failed to convert SVG to PNG using cairosvg")
+        return None
 
     # Convert PNG bytes to PIL Image
     image = Image.open(io.BytesIO(png_data))
@@ -292,29 +297,29 @@ def get_all_combinations(list_of_captions):
             text_list.append(", ".join(combo))
     return text_list
 
-    
+import gc 
 def _create_inception_dataset(kanji_dict):
+    BATCH_SIZE = 500
     dataset_dict = {"text": [], "image": []}
-
-    for kanji, data in tqdm(kanji_dict.items(), total=len(kanji_dict), desc="Processing Kanji Dataset"):
-        image = Image.open(data['path'])
-        list_of_captions = data['meanings'].split("; ")
-
-        en_captions = [caption for caption in list_of_captions if is_english(caption)] # filter out non-english captions
-
-        all_combinations = get_all_combinations(en_captions) # exhaust all combinations (variable # of element)
-
-        special_token = "Kanji"
-        CAPTION_TEMPLATE = "a {special_token} meaning {caption}"
-        transform_text = lambda caption: CAPTION_TEMPLATE.format(special_token=special_token, caption=caption)
-
-        for text in all_combinations:
-            dataset_dict["text"].append(transform_text(text))
-            dataset_dict["image"].append(image)
-                    
-    dataset = DatasetDict({'train': Dataset.from_dict(dataset_dict)})
-    return dataset
     
+    batches = list(kanji_dict.items())
+    for i in range(0, len(batches), BATCH_SIZE):
+        batch = dict(batches[i:i + BATCH_SIZE])
+        
+        for kanji, data in tqdm(batch.items(), total=len(batch), desc=f"Batch {i//BATCH_SIZE + 1}"):
+            with Image.open(data['path']) as image:
+                list_of_captions = data['meanings'].split("; ")
+                en_captions = [caption for caption in list_of_captions if is_english(caption)]
+                all_combinations = get_all_combinations(en_captions)
+                
+                for text in all_combinations:
+                    dataset_dict["text"].append(f"a Kanji meaning {text}")
+                    dataset_dict["image"].append(image.copy())
+
+            if (i + BATCH_SIZE) % 1000 == 0:
+                gc.collect()  # Force garbage collection
+
+    return DatasetDict({'train': Dataset.from_dict(dataset_dict)})
 
 
 def create_inception_dataset(push_to_hub: bool = False, hub_model_id: str = "Ksgk-fy/inception-kanji-dataset"):

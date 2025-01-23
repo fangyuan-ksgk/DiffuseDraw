@@ -1,6 +1,9 @@
-export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export DATASET_NAME="Ksgk-fy/expanded-kanji-dataset"
-export OUTPUT_DIR="checkpoint/kanji_inception_finetune"
+# export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
+export DATASET_NAME="Ksgk-fy/concept-kanji-dataset"
+# export DATASET_NAME="Ksgk-fy/concept-augmented-kanji-dataset"
+export OUTPUT_DIR="checkpoint/kanji_inception_finetune_curriculum_v3"
+
 
 # copy script
 cp -f src/train_inception.py external/diffusers/examples/dreambooth/train_inception.py
@@ -12,14 +15,14 @@ accelerate launch external/diffusers/examples/dreambooth/train_inception.py \
   --dataset_name=$DATASET_NAME \
   --output_dir=$OUTPUT_DIR \
   --concept_prompt="an image of Kanji character" \
-  --concept_learning_ratio=0.7 \
+  --concept_learning_ratio=0.8 \
   --resolution=512 \
   --train_batch_size=1 \
-  --gradient_accumulation_steps=1 \
+  --gradient_accumulation_steps=4 \
   --learning_rate=2e-6 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
-  --max_train_steps=8000 \
+  --max_train_steps=15000 \
   --mixed_precision="no" \
   --report_to="wandb" \
   --logging_dir="log" \
@@ -27,4 +30,5 @@ accelerate launch external/diffusers/examples/dreambooth/train_inception.py \
   --num_validation_images=4 \
   --validation_steps=1000 \
   --train_text_encoder \
+  --checkpoints_total_limit=10 \
   --push_to_hub
