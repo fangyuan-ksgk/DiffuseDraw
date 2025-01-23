@@ -289,16 +289,18 @@ def is_english(text):
     # 2. At least 60% of words are recognized English words
     return (not has_non_english_chars) and (english_ratio >= 0.6)
     
-
-def get_all_combinations(list_of_captions):
+from random import shuffle
+def get_all_combinations(list_of_captions, max_n=5):
     text_list = []
-    for i in range(1, len(list_of_captions) + 1):
-        for combo in combinations(list_of_captions, i):
+    for i in range(1, max_n + 1):
+        shuffled_combos = list(combinations(list_of_captions, i))
+        random.shuffle(shuffled_combos)
+        for combo in shuffled_combos:
             text_list.append(", ".join(combo))
     return text_list
 
 import gc 
-def _create_inception_dataset(kanji_dict):
+def _create_inception_dataset(kanji_dict, max_n=5):
     BATCH_SIZE = 500
     dataset_dict = {"text": [], "image": []}
     
@@ -310,7 +312,7 @@ def _create_inception_dataset(kanji_dict):
             with Image.open(data['path']) as image:
                 list_of_captions = data['meanings'].split("; ")
                 en_captions = [caption for caption in list_of_captions if is_english(caption)]
-                all_combinations = get_all_combinations(en_captions)
+                all_combinations = get_all_combinations(en_captions, max_n=max_n)
                 
                 for text in all_combinations:
                     dataset_dict["text"].append(f"a Kanji meaning {text}")
@@ -322,9 +324,9 @@ def _create_inception_dataset(kanji_dict):
     return DatasetDict({'train': Dataset.from_dict(dataset_dict)})
 
 
-def create_inception_dataset(push_to_hub: bool = False, hub_model_id: str = "Ksgk-fy/inception-kanji-dataset"):
+def create_inception_dataset(push_to_hub: bool = False, hub_model_id: str = "Ksgk-fy/inception-kanji-dataset", max_n: int = 5):
     kanji_dict = prepare_kanji_dict()
-    dataset = _create_inception_dataset(kanji_dict)
+    dataset = _create_inception_dataset(kanji_dict, max_n=max_n)
     if push_to_hub:
         dataset.push_to_hub(hub_model_id)
     return dataset
