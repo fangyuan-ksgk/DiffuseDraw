@@ -92,14 +92,14 @@ def parse_kanjidic2(xml_path):
     
     return kanji_dict
 
-def convert_svg_to_image(svg_path: str, out_dir: str = "data/kanji_image"):
+def convert_svg_to_image(svg_path: str, out_dir: str = "data/kanji_image", resolution: int = 128):
     out_dir = "data/kanji_image"
     os.makedirs(out_dir, exist_ok=True)
 
     # Read SVG and convert to PNG in memory
     try:
         from cairosvg import svg2png
-        png_data = svg2png(url=svg_path, output_width=128, output_height=128)
+        png_data = svg2png(url=svg_path, output_width=resolution, output_height=resolution)
     except:
         print("Failed to convert SVG to PNG using cairosvg")
         return None
@@ -113,11 +113,11 @@ def convert_svg_to_image(svg_path: str, out_dir: str = "data/kanji_image"):
     # Paste the kanji image onto the white background
     white_bg.paste(image, (0, 0), image)
     
-    image_path = os.path.join(out_dir, f"{os.path.basename(svg_path).replace('-paths.svg', '-128.png')}")
+    image_path = os.path.join(out_dir, f"{os.path.basename(svg_path).replace('-paths.svg', f'-{resolution}.png')}")
     white_bg.save(image_path)
     return image_path
 
-def get_kanji_graphs(kanji_svg_folder: str = "data/kanji", kanji_graph_folder: str = "data/kanji_paths"):
+def get_kanji_graphs(kanji_svg_folder: str = "data/kanji", kanji_graph_folder: str = "data/kanji_paths", resolution: int = 128):
     kanji_files = [p for p in glob.glob(f"{kanji_svg_folder}/*.svg") if not "-" in p]
     kanji_codes = [p.split("/")[-1].split(".")[0] for p in kanji_files]
 
@@ -126,7 +126,7 @@ def get_kanji_graphs(kanji_svg_folder: str = "data/kanji", kanji_graph_folder: s
         if not is_valid_kanji_code(code):
             continue
         svg_path = createPathsSVG(file, kanji_graph_folder)
-        image_path = convert_svg_to_image(svg_path, kanji_graph_folder)
+        image_path = convert_svg_to_image(svg_path, kanji_graph_folder, resolution)
         os.remove(svg_path)
         kanji_graphs[code_to_kanji(code)] = image_path
         
@@ -136,12 +136,12 @@ import json
 
 # combine kanji_dict and kanji_meanings
 def prepare_kanji_dict(kanji_svg_folder: str = "data/kanji", kanji_graph_folder: str = "data/kanji_paths", kanjidic2_path: str = "data/kanjidic2.xml",
-                       out_dir: str = "data", regenerate: bool = False):
+                       out_dir: str = "data", regenerate: bool = False, resolution: int = 128):
     
     if os.path.exists(os.path.join(out_dir, "kanji_dict.json")) and not regenerate:
         return json.load(open(os.path.join(out_dir, "kanji_dict.json"), "r", encoding="utf-8"))
     
-    kanji_graphs = get_kanji_graphs(kanji_svg_folder, kanji_graph_folder)
+    kanji_graphs = get_kanji_graphs(kanji_svg_folder, kanji_graph_folder, resolution)
     kanji_meanings = parse_kanjidic2(kanjidic2_path)
     
     kanji_dict = {} 
@@ -300,7 +300,7 @@ def get_all_combinations(list_of_captions, max_n=5):
     return text_list
 
 import gc 
-def _create_inception_dataset(kanji_dict, max_n=5):
+def _create_inception_dataset(kanji_dict, max_n=5, resolution=512):
     BATCH_SIZE = 500
     dataset_dict = {"text": [], "image": []}
     
@@ -310,6 +310,7 @@ def _create_inception_dataset(kanji_dict, max_n=5):
         
         for kanji, data in tqdm(batch.items(), total=len(batch), desc=f"Batch {i//BATCH_SIZE + 1}"):
             with Image.open(data['path']) as image:
+                image = image.resize((resolution, resolution))
                 list_of_captions = data['meanings'].split("; ")
                 en_captions = [caption for caption in list_of_captions if is_english(caption)]
                 all_combinations = get_all_combinations(en_captions, max_n=max_n)
@@ -324,8 +325,8 @@ def _create_inception_dataset(kanji_dict, max_n=5):
     return DatasetDict({'train': Dataset.from_dict(dataset_dict)})
 
 
-def create_inception_dataset(push_to_hub: bool = False, hub_model_id: str = "Ksgk-fy/inception-kanji-dataset", max_n: int = 5):
-    kanji_dict = prepare_kanji_dict()
+def create_inception_dataset(push_to_hub: bool = False, hub_model_id: str = "Ksgk-fy/inception-kanji-dataset", max_n: int = 5, resolution: int = 516):
+    kanji_dict = prepare_kanji_dict(regenerate=True, resolution=resolution)
     dataset = _create_inception_dataset(kanji_dict, max_n=max_n)
     if push_to_hub:
         dataset.push_to_hub(hub_model_id)
@@ -547,3 +548,54 @@ def visualize_tensor(pixel_values, is_grayscale=True):
     image = transforms.ToPILImage()(image)
 
     return image
+
+
+def enhance_contrast(image):
+    from PIL import Image, ImageEnhance
+    import numpy as np
+    
+    # First increase contrast significantly
+    enhancer = ImageEnhance.Contrast(image)
+    high_contrast = enhancer.enhance(5)
+    
+    # Convert to numpy array
+    img_array = np.array(high_contrast)
+    
+    # Calculate threshold using mean pixel value
+    threshold = np.mean(img_array)
+    
+    # Convert to pure black and white using threshold
+    bw_array = np.where(img_array > threshold, 255, 0)
+    
+    # Convert back to PIL Image
+    bw_image = Image.fromarray(bw_array.astype(np.uint8))
+    
+    return bw_image
+    
+
+def add_caption(image, caption):
+    from PIL import Image, ImageDraw, ImageFont
+    import numpy as np
+    
+    # Convert to PIL Image if needed
+    if isinstance(image, np.ndarray):
+        image = Image.fromarray(image)
+    elif not isinstance(image, Image.Image):
+        raise TypeError("Image must be PIL Image or numpy array")
+
+    image = enhance_contrast(image)
+    # Create new image with space for caption
+    width, height = image.size
+    new_height = height + 50  # Add 50 pixels for caption
+    new_image = Image.new('RGB', (width, new_height), 'white')
+    new_image.paste(image, (0,0))
+    
+    # Add caption
+    draw = ImageDraw.Draw(new_image)
+    font = ImageFont.truetype("DejaVuSans.ttf", 24)  # Increased font size to 24
+    text_width = draw.textlength(caption, font=font)
+    x = (width - text_width) / 2  # Center text
+    y = height + 10  # Position below image
+    draw.text((x, y), caption, fill='black', font=font)
+    
+    return new_image

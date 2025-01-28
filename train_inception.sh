@@ -1,8 +1,8 @@
 # export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
-export DATASET_NAME="Ksgk-fy/concept-kanji-dataset"
-# export DATASET_NAME="Ksgk-fy/concept-augmented-kanji-dataset"
-export OUTPUT_DIR="checkpoint/kanji_inception_finetune_curriculum_v3"
+# export DATASET_NAME="Ksgk-fy/concept-kanji-dataset"
+export DATASET_NAME="Ksgk-fy/inception-kanji-dataset"
+export OUTPUT_DIR="checkpoint/kanji_inception_finetune_v4"
 
 
 # copy script
@@ -22,7 +22,7 @@ accelerate launch external/diffusers/examples/dreambooth/train_inception.py \
   --learning_rate=2e-6 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
-  --max_train_steps=15000 \
+  --max_train_steps=30000 \
   --mixed_precision="no" \
   --report_to="wandb" \
   --logging_dir="log" \

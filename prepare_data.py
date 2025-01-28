@@ -2,6 +2,9 @@ from src.utils import create_inception_dataset
 
 DATASET_NAME = "Ksgk-fy/inception-kanji-dataset"
 
+# 1. Non-english caption is involved ---> remove 
+# 2. Resize towards 512x512, to be compatible with the model 
+
 import argparse
 
 if __name__ == "__main__":
