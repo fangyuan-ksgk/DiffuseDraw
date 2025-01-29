@@ -1,7 +1,7 @@
 import xml.etree.ElementTree as ET
 import re, os, glob, io, re, random
 from PIL import Image
-# from cairosvg import svg2png
+from cairosvg import svg2png
 from tqdm import tqdm 
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
@@ -92,29 +92,33 @@ def parse_kanjidic2(xml_path):
     
     return kanji_dict
 
-def convert_svg_to_image(svg_path: str, out_dir: str = "data/kanji_image", resolution: int = 128):
-    out_dir = "data/kanji_image"
+def convert_svg_to_image(svg_path: str, out_dir: str = "data/kanji_image", resolution: int = 128) -> str:
+    
+    # Ensure output directory exists
     os.makedirs(out_dir, exist_ok=True)
 
-    # Read SVG and convert to PNG in memory
     try:
-        from cairosvg import svg2png
+        # Convert SVG to PNG bytes
         png_data = svg2png(url=svg_path, output_width=resolution, output_height=resolution)
-    except:
-        print("Failed to convert SVG to PNG using cairosvg")
-        return None
+    except Exception as e:
+        raise RuntimeError(f"Failed to convert SVG to PNG: {e}")
 
-    # Convert PNG bytes to PIL Image
-    image = Image.open(io.BytesIO(png_data))
-    
-    # Create a white background image
-    white_bg = Image.new('RGBA', image.size, 'WHITE')
-    
-    # Paste the kanji image onto the white background
-    white_bg.paste(image, (0, 0), image)
-    
-    image_path = os.path.join(out_dir, f"{os.path.basename(svg_path).replace('-paths.svg', f'-{resolution}.png')}")
-    white_bg.save(image_path)
+    # Load the PNG data as a PIL Image
+    image = Image.open(io.BytesIO(png_data)).convert("RGBA")  # Ensure RGBA mode
+
+    # Flatten transparency onto a white background
+    white_bg = Image.new("RGBA", image.size, "WHITE")
+    image_with_bg = Image.alpha_composite(white_bg, image)
+
+    # Convert to RGB to remove alpha channel
+    image_rgb = image_with_bg.convert("RGB")
+
+    # Construct the output file path
+    base_name = os.path.splitext(os.path.basename(svg_path))[0]
+    image_path = os.path.join(out_dir, f"{base_name}-{resolution}.png")
+
+    # Save the final image
+    image_rgb.save(image_path, format="PNG")
     return image_path
 
 def get_kanji_graphs(kanji_svg_folder: str = "data/kanji", kanji_graph_folder: str = "data/kanji_paths", resolution: int = 128):
@@ -125,7 +129,7 @@ def get_kanji_graphs(kanji_svg_folder: str = "data/kanji", kanji_graph_folder: s
     for file, code in tqdm(zip(kanji_files, kanji_codes), total=len(kanji_files), desc="Processing kanji graphs"):
         if not is_valid_kanji_code(code):
             continue
-        svg_path = createPathsSVG(file, kanji_graph_folder)
+        svg_path = createPathsSVG(file, kanji_graph_folder) # create a new SVG file with black strokes only
         image_path = convert_svg_to_image(svg_path, kanji_graph_folder, resolution)
         os.remove(svg_path)
         kanji_graphs[code_to_kanji(code)] = image_path
@@ -325,7 +329,7 @@ def _create_inception_dataset(kanji_dict, max_n=5, resolution=512):
     return DatasetDict({'train': Dataset.from_dict(dataset_dict)})
 
 
-def create_inception_dataset(push_to_hub: bool = False, hub_model_id: str = "Ksgk-fy/inception-kanji-dataset", max_n: int = 5, resolution: int = 516):
+def create_inception_dataset(push_to_hub: bool = False, hub_model_id: str = "Ksgk-fy/inception-kanji-dataset", max_n: int = 2, resolution: int = 516):
     kanji_dict = prepare_kanji_dict(regenerate=True, resolution=resolution)
     dataset = _create_inception_dataset(kanji_dict, max_n=max_n)
     if push_to_hub:
